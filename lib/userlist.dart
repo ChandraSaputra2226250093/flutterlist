@@ -1,5 +1,7 @@
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutterlist/firebase_service.dart';
 import 'package:flutterlist/userdata.dart';
 import 'package:flutterlist/useritem.dart';
 import 'package:fluttertoast/fluttertoast.dart';
@@ -12,6 +14,9 @@ class UserList extends StatefulWidget{
 }
 
 class _UserListState extends State<UserList> {
+
+  FirebaseService firebaseService = new FirebaseService();
+
   TextEditingController nama = TextEditingController();
 
   TextEditingController umur = TextEditingController();
@@ -31,6 +36,8 @@ class _UserListState extends State<UserList> {
   String btnSimpanText = "Simpan";
   String btnUbahText = "Ubah";
 
+  bool isReadOnly = false;
+
   int selectedDaftarUserIndex = 0;
 
   @override
@@ -46,6 +53,7 @@ class _UserListState extends State<UserList> {
                 padding: EdgeInsets.all(5),
                 child: TextField(
                   controller: nama,
+                  readOnly: isReadOnly,
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     labelText: "Nama",
@@ -89,13 +97,18 @@ class _UserListState extends State<UserList> {
 
                           if(btnSimpanText == btnSimpanTextDefault){
                             // INI MENUNJUKAN SAVE
-                            daftarUser.add(UserData(nama.text, int.parse(umur.text), email.text));
+                            UserData userData = new UserData(nama.text, int.parse(umur.text), email.text);
+                            firebaseService.tambah(userData);
+                            // daftarUser.add(UserData(nama.text, int.parse(umur.text), email.text));
                           }else{
                             UserData userData = daftarUser[selectedDaftarUserIndex];
                             userData.nama = nama.text;
                             userData.umur = int.parse(umur.text);
                             userData.email = email.text;
-                            daftarUser[selectedDaftarUserIndex] = userData;
+
+                            firebaseService.ubah(userData);
+                            // daftarUser[selectedDaftarUserIndex] = userData;
+
                             btnSimpanColor = btnSimpanColorDefault;
                             btnSimpanText = btnSimpanTextDefault;
                             setState(() {
@@ -106,6 +119,7 @@ class _UserListState extends State<UserList> {
 
                           setState(() {
                             daftarUser;
+                            isReadOnly = false;
                           });
 
                           nama.text = "";
@@ -133,9 +147,11 @@ class _UserListState extends State<UserList> {
                         email.text = "";
                         btnSimpanColor = btnSimpanColorDefault;
                         btnSimpanText = btnSimpanTextDefault;
+                        isReadOnly = false;
                         setState(() {
                           btnSimpanColor;
                           btnSimpanText;
+                          false;
                         });
                       }, 
                       child: Text("Clear"),
@@ -152,76 +168,86 @@ class _UserListState extends State<UserList> {
                 thickness: 3,
               ),
               Expanded(
-                child: ListView.separated(
-                  scrollDirection: Axis.vertical,
-                  shrinkWrap: true,
-                  itemBuilder: (context, index){
-                    return Dismissible(
-                      key: ValueKey(daftarUser[index]),
-                      child: InkWell(
-                        child: UserItem(daftarUser[index]),
-                        onTap: () {
-                          nama.text = daftarUser[index].nama;
-                          umur.text = daftarUser[index].umur.toString();
-                          email.text = daftarUser[index].email;
-                          btnSimpanColor = btnUbahColor;
-                          btnSimpanText = btnUbahText;
-                          setState(() {
-                            btnSimpanColor;
-                            btnSimpanText;
-                          });
-                          selectedDaftarUserIndex = index;
-                        },
-                      ),
-                      background: Container(
-                        padding: EdgeInsets.only(left:25),
-                        color: Colors.red,
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child:Icon(Icons.delete, color: Colors.white,)),
-                      ),
-                      secondaryBackground: Container(
-                        color: Colors.white,
-                      ),
-                      dismissThresholds: {
-                        DismissDirection.startToEnd: 0.2
-                      },
-                      onDismissed: (direction) {
-                        daftarUser.removeAt(index);
-                          setState(() {
-                            daftarUser;
-                        });
-                        // inspect(daftarUser);
-                      },
-                      confirmDismiss:(direction) async {
-                        if(direction == DismissDirection.startToEnd){
-                          return await showDialog(
-                                          context: context,
-                                          builder: (BuildContext context) {
-                                            return AlertDialog(
-                                              title: const Text("Confirm"),
-                                              content: const Text("Are you sure you wish to delete this item?"),
-                                              actions: [
-                                                ElevatedButton(
-                                                  onPressed: () => Navigator.of(context).pop(true),
-                                                  child: const Text("DELETE")
-                                                ),
-                                                ElevatedButton(
-                                                  onPressed: () => Navigator.of(context).pop(false),
-                                                  child: const Text("CANCEL"),
-                                                ),
-                                              ],
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: firebaseService.ambilData(),
+                  builder: (context, snapshot) {
+                    return ListView.separated(
+                      scrollDirection: Axis.vertical,
+                      shrinkWrap: true,
+                      itemBuilder: (context, index){
+                        DocumentSnapshot documentSnapshot = snapshot.data!.docs[index];
+                        UserData userData = new UserData(documentSnapshot['nama'], documentSnapshot['umur'], documentSnapshot['email']);
+                        return Dismissible(
+                          key: ValueKey(userData),
+                          child: InkWell(
+                            child: UserItem(userData),
+                            onTap: () {
+                              nama.text = userData.nama;
+                              umur.text = userData.umur.toString();
+                              email.text = userData.email;
+                              btnSimpanColor = btnUbahColor;
+                              btnSimpanText = btnUbahText;
+                              isReadOnly = true;
+                              setState(() {
+                                btnSimpanColor;
+                                btnSimpanText;
+                                isReadOnly;
+                              });
+                              selectedDaftarUserIndex = index;
+                            },
+                          ),
+                          background: Container(
+                            padding: EdgeInsets.only(left:25),
+                            color: Colors.red,
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child:Icon(Icons.delete, color: Colors.white,)),
+                          ),
+                          secondaryBackground: Container(
+                            color: Colors.white,
+                          ),
+                          dismissThresholds: {
+                            DismissDirection.startToEnd: 0.2
+                          },
+                          onDismissed: (direction) {
+                            firebaseService.hapus(userData);
+                            // daftarUser.removeAt(index);
+                            //   setState(() {
+                            //     daftarUser;
+                            // });
+                            // inspect(daftarUser);
+                          },
+                          confirmDismiss:(direction) async {
+                            if(direction == DismissDirection.startToEnd){
+                              return await showDialog(
+                                              context: context,
+                                              builder: (BuildContext context) {
+                                                return AlertDialog(
+                                                  title: const Text("Confirm"),
+                                                  content: const Text("Are you sure you wish to delete this item?"),
+                                                  actions: [
+                                                    ElevatedButton(
+                                                      onPressed: () => Navigator.of(context).pop(true),
+                                                      child: const Text("DELETE")
+                                                    ),
+                                                    ElevatedButton(
+                                                      onPressed: () => Navigator.of(context).pop(false),
+                                                      child: const Text("CANCEL"),
+                                                    ),
+                                                  ],
+                                                );
+                                              },
                                             );
-                                          },
-                                        );
-                        }else{
-                          return false;
-                        }
-                      },
+                            }else{
+                              return false;
+                            }
+                          },
+                        );
+                      } , 
+                      separatorBuilder:(context, index) => Divider(), 
+                      itemCount: snapshot.data!.docs.length,
                     );
-                  } , 
-                  separatorBuilder:(context, index) => Divider(), 
-                  itemCount: daftarUser.length
+                  }
                 ),
               ),
             ],
